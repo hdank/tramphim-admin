@@ -1,0 +1,9 @@
+---
+export const prerender = false;
+import Layout from "../../../layouts/Layout.astro";
+import MemoryCardConfig from "../../../components/games/MemoryCardConfig";
+---
+
+<Layout>
+  <MemoryCardConfig client:load />
+</Layout>

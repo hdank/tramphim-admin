@@ -1,0 +1,71 @@
+---
+import Navigation from "../components/Navigation";
+import ToastProvider from "../components/ToastProvider";
+---
+
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quản Lý Phim</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+
+  <body class="text-white min-h-screen font-roboto bg-gray-900">
+    <!-- ✅ Navigation chỉ load 1 lần -->
+    <Navigation client:only="react" />
+
+    <!-- ✅ Phần nội dung trang -->
+    <main
+      id="main-content"
+      class="pt-0 md:pl-20 lg:pl-64 transition-all duration-300 mt-16 lg:mt-0"
+    >
+      <ToastProvider client:load>
+        <slot />
+      </ToastProvider>
+    </main>
+
+    <script>
+      const mainContainer = document.getElementById("main-content");
+      document.body.addEventListener("click", async (e) => {
+        const link = e.target.closest("a[data-spa]");
+        if (!link) return;
+
+        e.preventDefault();
+        const url = link.getAttribute("href");
+
+        try {
+          const response = await fetch(url);
+          const html = await response.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+          const newContent = doc.querySelector("#main-content")?.innerHTML;
+
+          if (newContent) {
+            mainContainer.innerHTML = newContent;
+            window.history.pushState({}, "", url);
+            window.scrollTo(0, 0);
+          }
+        } catch (error) {
+          console.error("SPA navigation failed:", error);
+          window.location.href = url; // fallback reload
+        }
+      });
+
+      window.addEventListener("popstate", async () => {
+        const response = await fetch(window.location.pathname);
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const newContent = doc.querySelector("#main-content")?.innerHTML;
+        if (newContent) {
+          mainContainer.innerHTML = newContent;
+        }
+      });
+    </script>
+  </body>
+</html>

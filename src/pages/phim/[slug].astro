@@ -1,0 +1,30 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ViewMovieModal from "../../components/ViewMovieModal";
+import { fetchAllMovieData } from "../../utils/apiMovie";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+
+let movieData = null;
+let error = null;
+
+try {
+  movieData = await fetchAllMovieData(slug);
+} catch (e) {
+  console.error(`Lỗi khi tải dữ liệu phim ${slug} trong Astro:`, e);
+  error = "Không thể tải dữ liệu ban đầu cho phim này.";
+}
+---
+
+<Layout title="Chi tiết phim">
+  <main class="">
+    <ViewMovieModal
+      client:load
+      phimSlug={slug}
+      phimData={movieData}
+      serverError={error}
+    />
+  </main>
+</Layout>

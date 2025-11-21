@@ -1,0 +1,9 @@
+---
+export const prerender = false;
+import Layout from "../../../layouts/Layout.astro";
+import MemoryCardTracking from "../../../components/games/MemoryCardTracking";
+---
+
+<Layout>
+  <MemoryCardTracking client:load />
+</Layout>

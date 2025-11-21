@@ -1,0 +1,48 @@
+---
+export const prerender = false;
+import MovieList from "../../components/MovieList.jsx";
+import Layout from "../../layouts/Layout.astro";
+import { BASE_API_URL } from "../../config/api.js";
+import MostViewedMoviesChart from "../../components/MostViewedMoviesChart";
+const { page } = Astro.params;
+const pageNumber = parseInt(page) || 1;
+const apiUrl = `${BASE_API_URL}/filter/?page=${pageNumber}&limit=64`;
+
+let movieData = null;
+let movies = [];
+let pagination = {};
+
+try {
+  const response = await fetch(apiUrl);
+
+  if (!response.ok) {
+    throw new Error(`API failed with status: ${response.status}`);
+  }
+
+  movieData = await response.json();
+  movies = movieData?.data || [];
+  pagination = movieData?.pagination || {};
+} catch (error) {
+  console.error("Lỗi khi tải dữ liệu phim:", error.message);
+}
+
+const breadCrumb = [
+  { name: "Trang chủ", slug: "/", isCurrent: false, position: 1 },
+  {
+    name: "Danh sách phim",
+    slug: "/danh-sach-phim",
+    isCurrent: false,
+    position: 2,
+  },
+  { name: `Trang ${pageNumber}`, slug: null, isCurrent: true, position: 3 },
+];
+---
+
+<Layout>
+  <MovieList
+    movies={movies}
+    breadCrumb={breadCrumb}
+    pagination={pagination}
+    client:load
+  />
+</Layout>

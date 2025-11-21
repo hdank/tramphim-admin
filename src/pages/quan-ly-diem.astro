@@ -1,0 +1,9 @@
+---
+export const prerender = false;
+import Layout from "../layouts/Layout.astro";
+import UserPointsManagement from "../components/UserPointsManagement";
+---
+
+<Layout>
+  <UserPointsManagement client:load />
+</Layout>
