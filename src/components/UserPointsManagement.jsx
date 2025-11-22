@@ -180,6 +180,27 @@ const UserPointsManagement = () => {
                         <div className="text-2xl font-bold text-sky-400">{selectedUser.points || 0}</div>
                     </div>
 
+                    {selectedUser && selectedUser.latest_premium_request_image && (
+                        <div className="mb-4 p-3 bg-gray-900 rounded border border-yellow-500/30">
+                            <h3 className="text-sm font-medium text-yellow-400 mb-2">Yêu cầu Premium mới nhất</h3>
+                            <div className="relative group">
+                                <img
+                                    src={selectedUser.latest_premium_request_image}
+                                    alt="Payment Proof"
+                                    className="w-full max-h-60 object-contain rounded bg-black/50"
+                                />
+                                <a
+                                    href={selectedUser.latest_premium_request_image}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white text-sm font-medium"
+                                >
+                                    Xem ảnh gốc
+                                </a>
+                            </div>
+                        </div>
+                    )}
+
                     <form onSubmit={handleSubmit} className="space-y-4">
                         {/* Action Selection */}
                         <div>
@@ -266,7 +287,8 @@ const UserPointsManagement = () => {
                                         "Chúc mừng bạn đạt danh hiệu 'Trưởng Trạm'. Đây là quà thưởng thăng hạng",
                                         "Quà tri ân Fan Cứng tháng này của Trạm Phim. Cảm ơn bạn đã đồng hành",
                                         "🎉Chúc mừng bạn thắng Minigame",
-                                        "Hoàn tác: Hủy giao dịch đổi quà theo yêu cầu"
+                                        "Hoàn tác: Hủy giao dịch đổi quà theo yêu cầu",
+                                        "Mua tài khoản Youtube Premium thành công, bạn được hoàn 15.000 điểm"
                                     ].map((suggestion, index) => (
                                         <button
                                             key={index}
