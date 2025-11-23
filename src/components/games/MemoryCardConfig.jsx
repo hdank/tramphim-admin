@@ -366,7 +366,7 @@ const MemoryCardConfig = () => {
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                         {images.map((img) => (
                             <div key={img.id} className="group relative bg-gray-800 rounded-lg overflow-hidden border border-gray-700 aspect-square">
-                                <img src={`http://localhost:8000${img.url}`} alt={img.name} className="w-full h-full object-cover" />
+                                <img src={`${GAME_API_URL}${img.url}`} alt={img.name} className="w-full h-full object-cover" />
                                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                     <button
                                         onClick={() => handleDeleteImage(img.id)}

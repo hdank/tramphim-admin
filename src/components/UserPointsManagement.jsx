@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Search, Plus, Minus, Settings } from "lucide-react";
 import { useToast } from "./ToastProvider";
 
@@ -14,6 +14,7 @@ const UserPointsManagement = () => {
     const [reason, setReason] = useState("");
     const [isSearching, setIsSearching] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [latestPointRequest, setLatestPointRequest] = useState(null);
 
     const handleSearch = async () => {
         if (!searchQuery.trim()) {
@@ -108,6 +109,85 @@ const UserPointsManagement = () => {
         }
     };
 
+    // Fetch latest point request
+    useEffect(() => {
+        const fetchLatestPointRequest = async () => {
+            try {
+                const token = localStorage.getItem("access_token");
+                const res = await fetch(
+                    `${API_BASE_URL}/api/admin/point-requests/latest`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
+
+                if (!res.ok) return;
+
+                const data = await res.json();
+                setLatestPointRequest(data);
+            } catch (error) {
+                console.error("Error fetching latest point request:", error);
+            }
+        };
+
+        fetchLatestPointRequest();
+        const interval = setInterval(fetchLatestPointRequest, 30000); // Refresh every 30 seconds
+
+        return () => clearInterval(interval);
+    }, []);
+
+    const handleApprovePointRequest = async (request) => {
+        try {
+            const token = localStorage.getItem("access_token");
+            const res = await fetch(
+                `${API_BASE_URL}/api/admin/point-requests/${request.id}/approve`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (!res.ok) throw new Error("Approval failed");
+
+            const result = await res.json();
+            showToast(result.message || "Đã duyệt yêu cầu nạp đậu", "success");
+            
+            // Refresh latest point request
+            setLatestPointRequest({ ...request, status: "approved" });
+        } catch (error) {
+            showToast("Lỗi khi duyệt yêu cầu", "error");
+        }
+    };
+
+    const handleRejectPointRequest = async (request) => {
+        try {
+            const token = localStorage.getItem("access_token");
+            const res = await fetch(
+                `${API_BASE_URL}/api/admin/point-requests/${request.id}/reject`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (!res.ok) throw new Error("Rejection failed");
+
+            const result = await res.json();
+            showToast(result.message || "Đã từ chối yêu cầu nạp đậu", "success");
+            
+            // Refresh latest point request
+            setLatestPointRequest({ ...request, status: "rejected" });
+        } catch (error) {
+            showToast("Lỗi khi từ chối yêu cầu", "error");
+        }
+    };
+
     return (
         <div className="p-6">
             <h1 className="text-2xl font-bold text-white mb-6">Quản Lý Điểm Người Dùng</h1>
@@ -165,6 +245,78 @@ const UserPointsManagement = () => {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Latest Point Request Section */}
+            <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                <h2 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
+                    <span>💰</span>
+                    Yêu cầu nạp đậu mới nhất
+                </h2>
+                {latestPointRequest ? (
+                    <div className="bg-gray-900 p-4 rounded border border-yellow-500/30">
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <div className="text-sm text-gray-400">Người dùng</div>
+                                <div className="text-white font-medium">{latestPointRequest.user?.username}</div>
+                            </div>
+                            <div>
+                                <div className="text-sm text-gray-400">Trạng thái</div>
+                                <div className={`font-medium ${latestPointRequest.status === 'pending' ? 'text-yellow-400' : latestPointRequest.status === 'approved' ? 'text-green-400' : 'text-red-400'}`}>
+                                    {latestPointRequest.status === 'pending' ? '⏳ Chờ duyệt' : latestPointRequest.status === 'approved' ? '✅ Đã duyệt' : '❌ Từ chối'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-sm text-gray-400">Số tiền</div>
+                                <div className="text-white font-medium">{latestPointRequest.amount_vnd?.toLocaleString()} VNĐ</div>
+                            </div>
+                            <div>
+                                <div className="text-sm text-gray-400">Số đậu</div>
+                                <div className="text-yellow-400 font-medium">{latestPointRequest.amount_points?.toLocaleString()} Đậu</div>
+                            </div>
+                        </div>
+                        {latestPointRequest.image_url && (
+                            <div className="mb-4">
+                                <div className="text-sm text-gray-400 mb-2">Ảnh chứng thực</div>
+                                <div className="relative group">
+                                    <img
+                                        src={latestPointRequest.image_url}
+                                        alt="Payment Proof"
+                                        className="w-full max-h-60 object-contain rounded bg-black/50"
+                                    />
+                                    <a
+                                        href={latestPointRequest.image_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white text-sm font-medium"
+                                    >
+                                        Xem ảnh gốc
+                                    </a>
+                                </div>
+                            </div>
+                        )}
+                        {latestPointRequest.status === 'pending' && (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => handleApprovePointRequest(latestPointRequest)}
+                                    className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-500 text-white rounded transition-colors"
+                                >
+                                    ✓ Duyệt
+                                </button>
+                                <button
+                                    onClick={() => handleRejectPointRequest(latestPointRequest)}
+                                    className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
+                                >
+                                    ✗ Từ chối
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="text-center py-8 text-gray-400">
+                        Không có yêu cầu nạp đậu nào
                     </div>
                 )}
             </div>
@@ -283,7 +435,7 @@ const UserPointsManagement = () => {
                                         "Điều chỉnh điểm hệ thống",
                                         "Thưởng đóng góp nội dung",
                                         "Hoàn điểm giao dịch",
-                                        "Cập nhật số dư sai só từ hệ thống cũ",
+                                        "Cập nhật số dư sai sót từ hệ thống cũ",
                                         "Chúc mừng bạn đạt danh hiệu 'Trưởng Trạm'. Đây là quà thưởng thăng hạng",
                                         "Quà tri ân Fan Cứng tháng này của Trạm Phim. Cảm ơn bạn đã đồng hành",
                                         "🎉Chúc mừng bạn thắng Minigame",
