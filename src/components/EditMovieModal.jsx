@@ -138,7 +138,7 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
       const uploadFormData = new FormData();
       uploadFormData.append("file", file);
       const response = await axios.post(
-        `${BASE_API_URL}/upload/${type}/`,
+        `${BASE_API_URL}/upload/${type}`,
         uploadFormData,
         {
           headers: { "Content-Type": "multipart/form-data" },
@@ -643,9 +643,8 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
                           const newLichChieu = [...formData.lich_chieu];
                           const [currentHour, currentMinute] =
                             newLichChieu[index].gio_chieu.split(":");
-                          newLichChieu[index].gio_chieu = `${e.target.value}:${
-                            currentMinute || "00"
-                          }`;
+                          newLichChieu[index].gio_chieu = `${e.target.value}:${currentMinute || "00"
+                            }`;
                           setFormData((prev) => ({
                             ...prev,
                             lich_chieu: newLichChieu,
@@ -669,9 +668,8 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
                           const newLichChieu = [...formData.lich_chieu];
                           const [currentHour, currentMinute] =
                             newLichChieu[index].gio_chieu.split(":");
-                          newLichChieu[index].gio_chieu = `${
-                            currentHour || "00"
-                          }:${e.target.value}`;
+                          newLichChieu[index].gio_chieu = `${currentHour || "00"
+                            }:${e.target.value}`;
                           setFormData((prev) => ({
                             ...prev,
                             lich_chieu: newLichChieu,
@@ -737,10 +735,9 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
                     type="button"
                     onClick={() => handleCheckboxChange(tl.slug)}
                     className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200
-                      ${
-                        formData.the_loai.includes(tl.slug)
-                          ? "bg-gray-900 text-white shadow-md"
-                          : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+                      ${formData.the_loai.includes(tl.slug)
+                        ? "bg-gray-900 text-white shadow-md"
+                        : "bg-gray-200 text-gray-800 hover:bg-gray-300"
                       }`}
                   >
                     {tl.ten}
