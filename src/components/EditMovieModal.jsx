@@ -11,7 +11,9 @@ import {
   Plus,
   Minus,
   Check,
-  Wand2,
+  Type,
+  Eye,
+  Palette,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { BASE_API_URL } from "../config/api";
@@ -51,8 +53,26 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
     phimData.dien_vien.map((dv) => dv.ten).join(", ")
   );
   const [loading, setLoading] = useState(false);
-  const [generatingTitleImage, setGeneratingTitleImage] = useState(false);
   const [updatingLichChieuIndex, setUpdatingLichChieuIndex] = useState(null);
+
+  // Title customization states
+  const [showTitleEditor, setShowTitleEditor] = useState(false);
+  const [availableFonts, setAvailableFonts] = useState([]);
+  const [loadingFonts, setLoadingFonts] = useState(false);
+  const [titleSettings, setTitleSettings] = useState({
+    title: phimData.ten_phim || "",
+    font_path: "",
+    font_size: 72,
+    text_color: [255, 255, 255, 255],
+    stroke_color: [0, 0, 0, 255],
+    stroke_width: 3,
+    shadow_offset: 4,
+    width: 800,
+    height: 200,
+  });
+  const [titlePreview, setTitlePreview] = useState(null);
+  const [generatingPreview, setGeneratingPreview] = useState(false);
+  const [savingTitle, setSavingTitle] = useState(false);
 
   useEffect(() => {
     if (editData && editData.phim) {
@@ -76,8 +96,99 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
       setPosterPreviewUrl(null);
       setBannerPreviewUrl(null);
       setTitleImagePreviewUrl(null);
+      setTitleSettings((prev) => ({
+        ...prev,
+        title: editData.phim.ten_phim || "",
+      }));
+      setTitlePreview(null);
     }
   }, [editData]);
+
+  // Fetch available fonts when title editor is opened
+  useEffect(() => {
+    if (showTitleEditor && availableFonts.length === 0) {
+      fetchAvailableFonts();
+    }
+  }, [showTitleEditor]);
+
+  const fetchAvailableFonts = async () => {
+    setLoadingFonts(true);
+    try {
+      const response = await axios.get(`${BASE_API_URL}/phim/admin/available-fonts`);
+      const fonts = response.data.fonts || [];
+      setAvailableFonts(fonts);
+      // Set default font if available
+      if (fonts.length > 0 && !titleSettings.font_path) {
+        // Prefer Vietnamese-supporting fonts
+        const vietnameseFont = fonts.find(f => f.supports_vietnamese);
+        setTitleSettings((prev) => ({
+          ...prev,
+          font_path: vietnameseFont?.path || fonts[0].path,
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching fonts:", error);
+      toast.error("Không thể tải danh sách font.");
+    } finally {
+      setLoadingFonts(false);
+    }
+  };
+
+  const handlePreviewTitle = async () => {
+    if (!titleSettings.font_path) {
+      toast.error("Vui lòng chọn font.");
+      return;
+    }
+    if (!titleSettings.title.trim()) {
+      toast.error("Vui lòng nhập tiêu đề.");
+      return;
+    }
+
+    setGeneratingPreview(true);
+    try {
+      const response = await axios.post(`${BASE_API_URL}/phim/admin/preview-title`, titleSettings);
+      setTitlePreview(response.data.preview);
+    } catch (error) {
+      console.error("Error generating preview:", error);
+      toast.error("Không thể tạo preview.");
+    } finally {
+      setGeneratingPreview(false);
+    }
+  };
+
+  const handleSaveTitleImage = async () => {
+    if (!formData.slug) {
+      toast.error("Phải lưu phim trước khi tạo title image.");
+      return;
+    }
+    if (!titleSettings.font_path) {
+      toast.error("Vui lòng chọn font.");
+      return;
+    }
+
+    setSavingTitle(true);
+    try {
+      const response = await axios.post(
+        `${BASE_API_URL}/phim/${formData.slug}/generate-title-image`,
+        titleSettings
+      );
+      
+      if (response.data.title_image_url) {
+        setFormData((prev) => ({
+          ...prev,
+          title_image_url: response.data.title_image_url,
+        }));
+        setTitleImagePreviewUrl(response.data.title_image_url);
+        toast.success("Đã tạo và lưu title image thành công!");
+        setShowTitleEditor(false);
+      }
+    } catch (error) {
+      console.error("Error saving title image:", error);
+      toast.error("Không thể lưu title image.");
+    } finally {
+      setSavingTitle(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -98,38 +209,11 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
   const handleClearTitleImage = () => {
     setTitleImageFile(null);
     setTitleImagePreviewUrl(null);
+    setTitlePreview(null);
     setFormData((prevData) => ({
       ...prevData,
       title_image_url: null,
     }));
-  };
-
-  const handleAutoGenerateTitleImage = async () => {
-    if (!formData.slug) {
-      toast.error("Phải lưu phim trước khi tạo title image tự động.");
-      return;
-    }
-    
-    setGeneratingTitleImage(true);
-    try {
-      const response = await axios.post(
-        `${BASE_API_URL}/phim/${formData.slug}/generate-title-image?force=true`
-      );
-      
-      if (response.data.title_image_url) {
-        setFormData((prevData) => ({
-          ...prevData,
-          title_image_url: response.data.title_image_url,
-        }));
-        setTitleImagePreviewUrl(response.data.title_image_url);
-        toast.success("Đã tạo title image tự động thành công!");
-      }
-    } catch (error) {
-      console.error("Lỗi khi tạo title image:", error);
-      toast.error("Lỗi khi tạo title image tự động.");
-    } finally {
-      setGeneratingTitleImage(false);
-    }
   };
 
   const handleCheckboxChange = (slug) => {
@@ -487,7 +571,7 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
                       <img
                         src={titleImagePreviewUrl || formData.title_image_url}
                         alt="Tiêu đề Phim Image Preview"
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain"
                       />
                     ) : (
                       <Upload size={24} className="text-gray-400" />
@@ -515,37 +599,222 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
               </div>
             </div>
 
-            {/* Title Image URL Input */}
-            <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-              <div className="flex justify-between items-center mb-1">
+            {/* Title Image URL Input and Editor */}
+            <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+              <div className="flex justify-between items-center mb-2">
                 <label className="block text-xs font-semibold text-gray-700">
-                  Tiêu đề Phim (URL từ CDN)
+                  Tiêu đề Phim (URL từ CDN hoặc tự tạo)
                 </label>
                 <button
                   type="button"
-                  onClick={handleAutoGenerateTitleImage}
-                  disabled={generatingTitleImage}
-                  className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-full hover:bg-purple-200 transition-colors disabled:opacity-50"
+                  onClick={() => setShowTitleEditor(!showTitleEditor)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-full hover:bg-purple-200 transition-colors"
                 >
-                  {generatingTitleImage ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <Wand2 size={12} />
-                  )}
-                  Tự động tạo
+                  <Type size={12} />
+                  {showTitleEditor ? "Ẩn Editor" : "Tạo Title"}
                 </button>
               </div>
+              
               <input
                 type="text"
                 name="title_image_url"
                 value={formData.title_image_url || ""}
                 onChange={handleChange}
                 placeholder="https://cdn.example.com/title-image.png"
-                className="w-full px-3 py-1.5 text-sm rounded-lg bg-white text-gray-900 border border-green-300 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
+                className="w-full px-3 py-1.5 text-sm rounded-lg bg-white text-gray-900 border border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors"
               />
               <p className="text-xs text-gray-500 mt-1">
-                File upload sẽ ưu tiên hơn URL. Hỗ trợ PNG trong suốt.
+                File upload ưu tiên hơn URL. Hỗ trợ PNG trong suốt.
               </p>
+
+              {/* Title Editor Panel */}
+              {showTitleEditor && (
+                <div className="mt-4 p-4 bg-white rounded-lg border border-purple-200">
+                  <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                    <Palette size={16} />
+                    Tạo Title Image
+                  </h4>
+                  
+                  {loadingFonts ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 size={20} className="animate-spin text-purple-600" />
+                      <span className="ml-2 text-sm text-gray-600">Đang tải fonts...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Title Text */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">
+                          Nội dung tiêu đề
+                        </label>
+                        <input
+                          type="text"
+                          value={titleSettings.title}
+                          onChange={(e) => setTitleSettings((prev) => ({ ...prev, title: e.target.value }))}
+                          placeholder="Nhập tiêu đề phim..."
+                          className="w-full px-3 py-1.5 text-sm rounded-lg bg-gray-50 text-gray-900 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+
+                      {/* Font Selection */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">
+                          Font chữ
+                        </label>
+                        <select
+                          value={titleSettings.font_path}
+                          onChange={(e) => setTitleSettings((prev) => ({ ...prev, font_path: e.target.value }))}
+                          className="w-full px-3 py-1.5 text-sm rounded-lg bg-gray-50 text-gray-900 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        >
+                          <option value="">-- Chọn font --</option>
+                          {availableFonts.length > 0 && (
+                            <>
+                              <optgroup label="Hỗ trợ tiếng Việt">
+                                {availableFonts.filter(f => f.supports_vietnamese).map((font) => (
+                                  <option key={font.path} value={font.path}>
+                                    ✓ {font.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                              <optgroup label="Các font khác">
+                                {availableFonts.filter(f => !f.supports_vietnamese).map((font) => (
+                                  <option key={font.path} value={font.path}>
+                                    {font.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            </>
+                          )}
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Font có ✓ được khuyên dùng cho tiếng Việt
+                        </p>
+                      </div>
+
+                      {/* Font Size and Dimensions */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">
+                            Cỡ chữ
+                          </label>
+                          <input
+                            type="number"
+                            value={titleSettings.font_size}
+                            onChange={(e) => setTitleSettings((prev) => ({ ...prev, font_size: parseInt(e.target.value) || 72 }))}
+                            min="24"
+                            max="200"
+                            className="w-full px-3 py-1.5 text-sm rounded-lg bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">
+                            Chiều rộng
+                          </label>
+                          <input
+                            type="number"
+                            value={titleSettings.width}
+                            onChange={(e) => setTitleSettings((prev) => ({ ...prev, width: parseInt(e.target.value) || 800 }))}
+                            min="400"
+                            max="1920"
+                            className="w-full px-3 py-1.5 text-sm rounded-lg bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">
+                            Chiều cao
+                          </label>
+                          <input
+                            type="number"
+                            value={titleSettings.height}
+                            onChange={(e) => setTitleSettings((prev) => ({ ...prev, height: parseInt(e.target.value) || 200 }))}
+                            min="100"
+                            max="600"
+                            className="w-full px-3 py-1.5 text-sm rounded-lg bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Stroke and Shadow */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">
+                            Độ dày viền
+                          </label>
+                          <input
+                            type="number"
+                            value={titleSettings.stroke_width}
+                            onChange={(e) => setTitleSettings((prev) => ({ ...prev, stroke_width: parseInt(e.target.value) || 0 }))}
+                            min="0"
+                            max="10"
+                            className="w-full px-3 py-1.5 text-sm rounded-lg bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">
+                            Độ đổ bóng
+                          </label>
+                          <input
+                            type="number"
+                            value={titleSettings.shadow_offset}
+                            onChange={(e) => setTitleSettings((prev) => ({ ...prev, shadow_offset: parseInt(e.target.value) || 0 }))}
+                            min="0"
+                            max="20"
+                            className="w-full px-3 py-1.5 text-sm rounded-lg bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Preview Area */}
+                      <div className="mt-3">
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">
+                          Xem trước
+                        </label>
+                        <div className="w-full h-32 bg-gradient-to-r from-gray-800 to-gray-900 rounded-lg flex items-center justify-center overflow-hidden">
+                          {titlePreview ? (
+                            <img
+                              src={titlePreview}
+                              alt="Title Preview"
+                              className="max-w-full max-h-full object-contain"
+                            />
+                          ) : (
+                            <span className="text-gray-400 text-sm">Nhấn "Xem trước" để tạo preview</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex justify-end gap-2 mt-3">
+                        <button
+                          type="button"
+                          onClick={handlePreviewTitle}
+                          disabled={generatingPreview || !titleSettings.font_path}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
+                        >
+                          {generatingPreview ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Eye size={14} />
+                          )}
+                          Xem trước
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveTitleImage}
+                          disabled={savingTitle || !titlePreview}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                        >
+                          {savingTitle ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Save size={14} />
+                          )}
+                          Lưu Title Image
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Mô tả */}
