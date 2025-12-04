@@ -11,6 +11,7 @@ import {
   Plus,
   Minus,
   Check,
+  Wand2,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { BASE_API_URL } from "../config/api";
@@ -31,6 +32,7 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
     trailer_url: phimData.trailer_url || "",
     poster_url: phimData.poster_url || "",
     banner_url: phimData.banner_url || "",
+    title_image_url: phimData.title_image_url || "",
     ten_phim_image: phimData.ten_phim_image || null,
     chieu_rap: phimData.chieu_rap || false,
     luot_xem: phimData.luot_xem || 0,
@@ -49,6 +51,7 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
     phimData.dien_vien.map((dv) => dv.ten).join(", ")
   );
   const [loading, setLoading] = useState(false);
+  const [generatingTitleImage, setGeneratingTitleImage] = useState(false);
   const [updatingLichChieuIndex, setUpdatingLichChieuIndex] = useState(null);
 
   useEffect(() => {
@@ -60,6 +63,7 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
         trailer_url: editData.phim.trailer_url || "",
         poster_url: editData.phim.poster_url || "",
         banner_url: editData.phim.banner_url || "",
+        title_image_url: editData.phim.title_image_url || "",
         ten_phim_image: editData.phim.ten_phim_image || null,
         chieu_rap: editData.phim.chieu_rap || false,
         luot_xem: editData.phim.luot_xem || 0,
@@ -96,8 +100,36 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
     setTitleImagePreviewUrl(null);
     setFormData((prevData) => ({
       ...prevData,
-      ten_phim_image: null,
+      title_image_url: null,
     }));
+  };
+
+  const handleAutoGenerateTitleImage = async () => {
+    if (!formData.slug) {
+      toast.error("Phải lưu phim trước khi tạo title image tự động.");
+      return;
+    }
+    
+    setGeneratingTitleImage(true);
+    try {
+      const response = await axios.post(
+        `${BASE_API_URL}/phim/${formData.slug}/generate-title-image?force=true`
+      );
+      
+      if (response.data.title_image_url) {
+        setFormData((prevData) => ({
+          ...prevData,
+          title_image_url: response.data.title_image_url,
+        }));
+        setTitleImagePreviewUrl(response.data.title_image_url);
+        toast.success("Đã tạo title image tự động thành công!");
+      }
+    } catch (error) {
+      console.error("Lỗi khi tạo title image:", error);
+      toast.error("Lỗi khi tạo title image tự động.");
+    } finally {
+      setGeneratingTitleImage(false);
+    }
   };
 
   const handleCheckboxChange = (slug) => {
@@ -164,7 +196,7 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
         updatedFormData.banner_url = await uploadImage(bannerFile, "banner");
       }
       if (titleImageFile) {
-        updatedFormData.ten_phim_image = await uploadImage(
+        updatedFormData.title_image_url = await uploadImage(
           titleImageFile,
           "img"
         );
@@ -444,16 +476,16 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
                 </div>
               </div>
 
-              {/* Tiêu đề phim (ten_phim_image) */}
+              {/* Tiêu đề phim (title_image_url) */}
               <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Tiêu đề Phim (Image)
+                  Tiêu đề Phim (File)
                 </label>
                 <div className="flex items-center space-x-3">
                   <div className="w-28 h-16 border border-gray-300 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200 flex items-center justify-center">
-                    {titleImagePreviewUrl || formData.ten_phim_image ? (
+                    {titleImagePreviewUrl || formData.title_image_url ? (
                       <img
-                        src={titleImagePreviewUrl || formData.ten_phim_image}
+                        src={titleImagePreviewUrl || formData.title_image_url}
                         alt="Tiêu đề Phim Image Preview"
                         className="w-full h-full object-cover"
                       />
@@ -468,7 +500,7 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
                       onChange={handleTitleImageChange}
                       className="block w-full text-xs text-gray-900 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-gray-300 file:text-gray-800 hover:file:bg-gray-400 transition-colors"
                     />
-                    {(titleImageFile || formData.ten_phim_image) && (
+                    {(titleImageFile || formData.title_image_url) && (
                       <button
                         type="button"
                         onClick={handleClearTitleImage}
@@ -481,6 +513,39 @@ const EditMovieModal = ({ editData, onClose, onUpdate }) => {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Title Image URL Input */}
+            <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-semibold text-gray-700">
+                  Tiêu đề Phim (URL từ CDN)
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAutoGenerateTitleImage}
+                  disabled={generatingTitleImage}
+                  className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-full hover:bg-purple-200 transition-colors disabled:opacity-50"
+                >
+                  {generatingTitleImage ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Wand2 size={12} />
+                  )}
+                  Tự động tạo
+                </button>
+              </div>
+              <input
+                type="text"
+                name="title_image_url"
+                value={formData.title_image_url || ""}
+                onChange={handleChange}
+                placeholder="https://cdn.example.com/title-image.png"
+                className="w-full px-3 py-1.5 text-sm rounded-lg bg-white text-gray-900 border border-green-300 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                File upload sẽ ưu tiên hơn URL. Hỗ trợ PNG trong suốt.
+              </p>
             </div>
 
             {/* Mô tả */}

@@ -14,6 +14,7 @@ interface PhimCreate {
   tmdb: string; // Giữ là string như trong BaseModel Python
   poster_url?: string | null;
   banner_url?: string | null;
+  title_image_url?: string | null;
   nam_phat_hanh: number;
   trailer_url?: string | null;
   ten_phim_image?: string | null;
@@ -66,6 +67,7 @@ const CreateMovieForm: React.FC = () => {
     mo_ta: "",
     poster_url: null,
     banner_url: null,
+    title_image_url: null,
     nam_phat_hanh: new Date().getFullYear(),
     trailer_url: null,
     ten_phim_image: null,
@@ -94,6 +96,7 @@ const CreateMovieForm: React.FC = () => {
 
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [titleImageFile, setTitleImageFile] = useState<File | null>(null);
 
   // --- useEffect: Fetch dữ liệu cho Select ---
   useEffect(() => {
@@ -142,6 +145,8 @@ const CreateMovieForm: React.FC = () => {
         setPosterFile(file);
       } else if (name === "banner_file") {
         setBannerFile(file);
+      } else if (name === "title_image_file") {
+        setTitleImageFile(file);
       }
     } else {
       setFormData((prev) => ({
@@ -174,7 +179,7 @@ const CreateMovieForm: React.FC = () => {
   // --- Hàm Tải ảnh lên (Image Upload) ---
   const handleImageUpload = async (
     file: File | null,
-    type: "poster" | "banner"
+    type: "poster" | "banner" | "img"
   ) => {
     if (!file) return null;
 
@@ -210,9 +215,10 @@ const CreateMovieForm: React.FC = () => {
     };
 
     try {
-      // 1. Tải lên ảnh Poster và Banner
+      // 1. Tải lên ảnh Poster, Banner và Title Image
       const posterUrl = await handleImageUpload(posterFile, "poster");
       const bannerUrl = await handleImageUpload(bannerFile, "banner");
+      const titleImageUrl = await handleImageUpload(titleImageFile, "img");
 
       if (posterFile && !posterUrl) {
         throw new Error("Tải lên poster thất bại.");
@@ -220,12 +226,19 @@ const CreateMovieForm: React.FC = () => {
       if (bannerFile && !bannerUrl) {
         throw new Error("Tải lên banner thất bại.");
       }
+      if (titleImageFile && !titleImageUrl) {
+        throw new Error("Tải lên title image thất bại.");
+      }
 
-      // 2. Chuẩn bị dữ liệu cuối cùng gửi đi (Lưu ý: poster_url và banner_url ưu tiên từ file upload)
+      // 2. Chuẩn bị dữ liệu cuối cùng gửi đi (Lưu ý: poster_url, banner_url, và title_image_url ưu tiên từ file upload)
+      // Title image: File upload > URL input > null
+      const finalTitleImageUrl = titleImageUrl || formData.title_image_url || null;
+      
       const finalFormData: PhimCreate = {
         ...formData,
         poster_url: processOptionalString(posterUrl || formData.poster_url),
         banner_url: processOptionalString(bannerUrl || formData.banner_url),
+        title_image_url: processOptionalString(finalTitleImageUrl),
         ten_khac: processOptionalString(formData.ten_khac),
         trailer_url: processOptionalString(formData.trailer_url),
         ten_phim_image: processOptionalString(formData.ten_phim_image),
@@ -261,6 +274,7 @@ const CreateMovieForm: React.FC = () => {
         mo_ta: "",
         poster_url: null,
         banner_url: null,
+        title_image_url: null,
         nam_phat_hanh: new Date().getFullYear(),
         trailer_url: null,
         ten_phim_image: null,
@@ -280,6 +294,7 @@ const CreateMovieForm: React.FC = () => {
       });
       setPosterFile(null);
       setBannerFile(null);
+      setTitleImageFile(null);
     } catch (err: any) {
       const detail = err.response?.data?.detail;
       let errorMessage = "Đã có lỗi xảy ra.";
@@ -448,7 +463,7 @@ const CreateMovieForm: React.FC = () => {
             </div>
 
             {/* Upload File/URL Images */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="flex flex-col">
                 <label
                   htmlFor="poster_file"
@@ -493,6 +508,52 @@ const CreateMovieForm: React.FC = () => {
                 </p>
               </div>
 
+              <div className="flex flex-col">
+                <label
+                  htmlFor="title_image_file"
+                  className="text-sm font-semibold text-gray-700 mb-1"
+                >
+                  Title Image (File)
+                </label>
+                <input
+                  id="title_image_file"
+                  type="file"
+                  name="title_image_file"
+                  onChange={handleChange}
+                  accept="image/*"
+                  className="text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 cursor-pointer"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {titleImageFile
+                    ? titleImageFile.name
+                    : "Chưa có file"}
+                </p>
+              </div>
+
+              <div className="flex flex-col">
+                <label
+                  htmlFor="title_image_url"
+                  className="text-sm font-semibold text-gray-700 mb-1"
+                >
+                  Title Image (URL)
+                </label>
+                <input
+                  id="title_image_url"
+                  type="text"
+                  name="title_image_url"
+                  value={formData.title_image_url || ""}
+                  onChange={handleChange}
+                  className={inputStyle}
+                  placeholder="URL từ CDN hoặc link ngoài"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  File upload sẽ ưu tiên hơn URL
+                </p>
+              </div>
+            </div>
+
+            {/* Tên Phim Image (URL) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="flex flex-col">
                 <label
                   htmlFor="ten_phim_image"
