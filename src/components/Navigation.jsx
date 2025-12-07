@@ -12,6 +12,7 @@ import {
   X,
   Gamepad2,
   Coins,
+  Smartphone,
 } from "lucide-react";
 
 const Navigation = () => {
@@ -42,6 +43,7 @@ const Navigation = () => {
     { href: "/chu-de", icon: Calendar, label: "Chủ Đề" },
     { href: "/games", icon: Gamepad2, label: "Quản lý Game" },
     { href: "/quan-ly-diem", icon: Coins, label: "Quản lý Điểm" },
+    { href: "/ung-dung", icon: Smartphone, label: "Quản lý App" },
     { href: "/doi-mat-khau", icon: Calendar, label: "Đổi mật khẩu" },
   ];
 
