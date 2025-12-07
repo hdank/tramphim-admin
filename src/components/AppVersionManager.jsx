@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BASE_API_URL } from "../config/api";
 
 const PLATFORMS = {
@@ -13,14 +13,17 @@ export default function AppVersionManager() {
   const [showModal, setShowModal] = useState(false);
   const [editingVersion, setEditingVersion] = useState(null);
   const [filterPlatform, setFilterPlatform] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  
   const [formData, setFormData] = useState({
     platform: "android_mobile",
     version_code: 1,
     version_name: "1.0.0",
-    download_url: "",
     release_notes: "",
     min_required_version: 1,
-    file_size: "",
     is_active: true,
   });
 
@@ -55,19 +58,44 @@ export default function AppVersionManager() {
     }));
   };
 
+  // Handle file selection
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.name.endsWith('.apk')) {
+        alert('Vui lòng chọn file APK (.apk)');
+        return;
+      }
+      if (file.size > 200 * 1024 * 1024) {
+        alert('File quá lớn. Kích thước tối đa là 200MB.');
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
+
+  // Format file size
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   // Reset form
   const resetForm = () => {
     setFormData({
       platform: "android_mobile",
       version_code: 1,
       version_name: "1.0.0",
-      download_url: "",
       release_notes: "",
       min_required_version: 1,
-      file_size: "",
       is_active: true,
     });
     setEditingVersion(null);
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   // Open modal for creating new version
@@ -91,50 +119,154 @@ export default function AppVersionManager() {
       platform: version.platform,
       version_code: version.version_code,
       version_name: version.version_name,
-      download_url: version.download_url,
       release_notes: version.release_notes || "",
       min_required_version: version.min_required_version,
-      file_size: version.file_size || "",
       is_active: version.is_active,
     });
+    setSelectedFile(null);
     setShowModal(true);
   };
 
-  // Create or update version
-  const handleSubmit = async (e) => {
+  // Create new version with APK upload
+  const handleCreate = async (e) => {
     e.preventDefault();
+    
+    if (!selectedFile) {
+      alert('Vui lòng chọn file APK để upload');
+      return;
+    }
+    
     try {
-      const url = editingVersion
-        ? `${BASE_API_URL}/admin/app-versions/${editingVersion.id}`
-        : `${BASE_API_URL}/admin/app-versions`;
-      const method = editingVersion ? "PUT" : "POST";
+      setUploading(true);
+      setUploadProgress(0);
+      
+      const formDataToSend = new FormData();
+      formDataToSend.append('file', selectedFile);
+      formDataToSend.append('platform', formData.platform);
+      formDataToSend.append('version_code', formData.version_code);
+      formDataToSend.append('version_name', formData.version_name);
+      formDataToSend.append('release_notes', formData.release_notes || '');
+      formDataToSend.append('min_required_version', formData.min_required_version);
+      formDataToSend.append('is_active', formData.is_active);
+      
+      const xhr = new XMLHttpRequest();
+      
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(progress);
+        }
+      });
+      
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setShowModal(false);
+          resetForm();
+          fetchVersions();
+          alert('Upload APK thành công!');
+        } else {
+          const error = JSON.parse(xhr.responseText);
+          alert(error.detail || 'Upload thất bại');
+        }
+        setUploading(false);
+      });
+      
+      xhr.addEventListener('error', () => {
+        alert('Lỗi kết nối khi upload');
+        setUploading(false);
+      });
+      
+      xhr.open('POST', `${BASE_API_URL}/admin/app-versions/upload-apk`);
+      xhr.send(formDataToSend);
+      
+    } catch (err) {
+      alert(err.message);
+      setUploading(false);
+    }
+  };
 
-      const response = await fetch(url, {
-        method,
+  // Update existing version (metadata only or with new APK)
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    
+    try {
+      // Update metadata first
+      const response = await fetch(`${BASE_API_URL}/admin/app-versions/${editingVersion.id}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...formData,
-          version_code: parseInt(formData.version_code),
+          version_name: formData.version_name,
+          release_notes: formData.release_notes,
           min_required_version: parseInt(formData.min_required_version),
+          is_active: formData.is_active,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to save version");
+        throw new Error(errorData.detail || "Failed to update version");
       }
-
-      setShowModal(false);
-      resetForm();
-      fetchVersions();
+      
+      // If new file selected, upload it
+      if (selectedFile) {
+        setUploading(true);
+        setUploadProgress(0);
+        
+        const formDataToSend = new FormData();
+        formDataToSend.append('file', selectedFile);
+        
+        const xhr = new XMLHttpRequest();
+        
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const progress = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress(progress);
+          }
+        });
+        
+        xhr.addEventListener('load', () => {
+          setUploading(false);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setShowModal(false);
+            resetForm();
+            fetchVersions();
+            alert('Cập nhật thành công!');
+          } else {
+            const error = JSON.parse(xhr.responseText);
+            alert(error.detail || 'Upload APK thất bại');
+            fetchVersions();
+          }
+        });
+        
+        xhr.addEventListener('error', () => {
+          alert('Lỗi kết nối khi upload APK');
+          setUploading(false);
+        });
+        
+        xhr.open('POST', `${BASE_API_URL}/admin/app-versions/${editingVersion.id}/upload-apk`);
+        xhr.send(formDataToSend);
+      } else {
+        setShowModal(false);
+        resetForm();
+        fetchVersions();
+      }
+      
     } catch (err) {
       alert(err.message);
     }
   };
 
+  const handleSubmit = (e) => {
+    if (editingVersion) {
+      handleUpdate(e);
+    } else {
+      handleCreate(e);
+    }
+  };
+
   // Delete version
   const handleDelete = async (id) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa phiên bản này?")) return;
+    if (!confirm("Bạn có chắc chắn muốn xóa phiên bản này?\nFile APK cũng sẽ bị xóa.")) return;
 
     try {
       const response = await fetch(`${BASE_API_URL}/admin/app-versions/${id}`, {
@@ -212,17 +344,17 @@ export default function AppVersionManager() {
               📱 Quản Lý Phiên Bản Ứng Dụng
             </h1>
             <p className="mt-1 text-gray-400">
-              Quản lý các phiên bản APK cho Android Mobile và Android TV
+              Upload và quản lý các file APK cho Android Mobile và Android TV
             </p>
           </div>
           <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-3 font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:from-blue-600 hover:to-blue-700"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 font-semibold text-white shadow-lg shadow-green-500/25 transition hover:from-green-600 hover:to-green-700"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            Thêm Phiên Bản Mới
+            Upload APK Mới
           </button>
         </div>
 
@@ -320,7 +452,7 @@ export default function AppVersionManager() {
         <div className="rounded-xl bg-gray-800 py-16 text-center">
           <div className="mb-4 text-6xl">📭</div>
           <h3 className="mb-2 text-xl font-semibold text-white">Chưa có phiên bản nào</h3>
-          <p className="text-gray-400">Nhấn "Thêm Phiên Bản Mới" để bắt đầu</p>
+          <p className="text-gray-400">Nhấn "Upload APK Mới" để bắt đầu</p>
         </div>
       ) : (
         <div className="space-y-8">
@@ -419,8 +551,8 @@ export default function AppVersionManager() {
                               href={version.download_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="rounded-lg bg-gray-700 p-2 text-gray-300 transition hover:bg-gray-600 hover:text-white"
-                              title="Tải xuống"
+                              className="rounded-lg bg-gray-700 p-2 text-gray-300 transition hover:bg-green-500 hover:text-white"
+                              title="Tải xuống APK"
                             >
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -478,12 +610,12 @@ export default function AppVersionManager() {
                 : "bg-gradient-to-r from-purple-600 to-purple-500"
             }`}>
               <h2 className="text-xl font-bold text-white">
-                {editingVersion ? "✏️ Chỉnh Sửa Phiên Bản" : "➕ Thêm Phiên Bản Mới"}
+                {editingVersion ? "✏️ Chỉnh Sửa Phiên Bản" : "📤 Upload APK Mới"}
               </h2>
               <p className="text-sm text-white/70">
                 {editingVersion 
                   ? `Đang chỉnh sửa v${editingVersion.version_name}`
-                  : "Tạo phiên bản mới cho ứng dụng"
+                  : "Upload file APK và điền thông tin phiên bản"
                 }
               </p>
             </div>
@@ -524,6 +656,69 @@ export default function AppVersionManager() {
                 </div>
               </div>
 
+              {/* APK File Upload */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-300">
+                  File APK {!editingVersion && <span className="text-red-400">*</span>}
+                </label>
+                <div 
+                  className={`relative rounded-xl border-2 border-dashed p-6 text-center transition ${
+                    selectedFile 
+                      ? "border-green-500 bg-green-500/10" 
+                      : "border-gray-600 hover:border-gray-500"
+                  }`}
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".apk"
+                    onChange={handleFileSelect}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                  />
+                  {selectedFile ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="rounded-lg bg-green-500/20 p-3">
+                        <svg className="h-8 w-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-white">{selectedFile.name}</p>
+                        <p className="text-sm text-gray-400">{formatFileSize(selectedFile.size)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFile(null);
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                        }}
+                        className="ml-2 rounded-lg p-2 text-gray-400 hover:bg-gray-700 hover:text-white"
+                      >
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <svg className="mx-auto h-12 w-12 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      <p className="mt-2 text-sm text-gray-400">
+                        <span className="font-medium text-white">Nhấn để chọn</span> hoặc kéo thả file APK
+                      </p>
+                      <p className="text-xs text-gray-500">Tối đa 200MB</p>
+                    </>
+                  )}
+                </div>
+                {editingVersion && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    💡 Bỏ trống nếu không muốn thay đổi file APK
+                  </p>
+                )}
+              </div>
+
               {/* Version Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -559,52 +754,21 @@ export default function AppVersionManager() {
                 </div>
               </div>
 
-              {/* Download URL */}
+              {/* Min Required Version */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-300">
-                  URL Tải xuống (APK)
+                  Min Required Version
                 </label>
                 <input
-                  type="url"
-                  name="download_url"
-                  value={formData.download_url}
+                  type="number"
+                  name="min_required_version"
+                  value={formData.min_required_version}
                   onChange={handleInputChange}
-                  placeholder="https://example.com/app.apk"
+                  min="1"
                   required
                   className="w-full rounded-xl border border-gray-600 bg-gray-700 px-4 py-3 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-              </div>
-
-              {/* Min Version & File Size */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-300">
-                    Min Required Version
-                  </label>
-                  <input
-                    type="number"
-                    name="min_required_version"
-                    value={formData.min_required_version}
-                    onChange={handleInputChange}
-                    min="1"
-                    required
-                    className="w-full rounded-xl border border-gray-600 bg-gray-700 px-4 py-3 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Bắt buộc cập nhật nếu nhỏ hơn</p>
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-300">
-                    Kích thước file
-                  </label>
-                  <input
-                    type="text"
-                    name="file_size"
-                    value={formData.file_size}
-                    onChange={handleInputChange}
-                    placeholder="25 MB"
-                    className="w-full rounded-xl border border-gray-600 bg-gray-700 px-4 py-3 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
+                <p className="mt-1 text-xs text-gray-500">Người dùng có version code thấp hơn sẽ bị bắt buộc cập nhật</p>
               </div>
 
               {/* Release Notes */}
@@ -640,6 +804,22 @@ export default function AppVersionManager() {
                 </label>
               </div>
 
+              {/* Upload Progress */}
+              {uploading && (
+                <div className="rounded-xl bg-gray-700/50 p-4">
+                  <div className="mb-2 flex items-center justify-between text-sm">
+                    <span className="text-gray-300">Đang upload...</span>
+                    <span className="font-medium text-white">{uploadProgress}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-600">
+                    <div 
+                      className="h-full bg-gradient-to-r from-green-400 to-green-500 transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex gap-3 pt-2">
                 <button
@@ -648,19 +828,21 @@ export default function AppVersionManager() {
                     setShowModal(false);
                     resetForm();
                   }}
-                  className="flex-1 rounded-xl border border-gray-600 px-6 py-3 font-medium text-gray-300 transition hover:bg-gray-700"
+                  disabled={uploading}
+                  className="flex-1 rounded-xl border border-gray-600 px-6 py-3 font-medium text-gray-300 transition hover:bg-gray-700 disabled:opacity-50"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className={`flex-1 rounded-xl px-6 py-3 font-semibold text-white transition ${
+                  disabled={uploading || (!editingVersion && !selectedFile)}
+                  className={`flex-1 rounded-xl px-6 py-3 font-semibold text-white transition disabled:opacity-50 ${
                     formData.platform === "android_mobile"
                       ? "bg-blue-500 hover:bg-blue-600"
                       : "bg-purple-500 hover:bg-purple-600"
                   }`}
                 >
-                  {editingVersion ? "Cập Nhật" : "Tạo Mới"}
+                  {uploading ? "Đang upload..." : editingVersion ? "Cập Nhật" : "Upload"}
                 </button>
               </div>
             </form>
