@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../config/api';
+import api from '../config/api.js';
 
 export default function AppVersionManager() {
   const [versions, setVersions] = useState({ mobile: null, tv: null });
