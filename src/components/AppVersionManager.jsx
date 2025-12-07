@@ -1,356 +1,474 @@
-import React, { useState, useEffect } from 'react';
-import { BASE_API_URL } from '../config/api.js';
+import { useState, useEffect } from "react";
+import { BASE_API_URL } from "../config/api";
+
+const PLATFORMS = {
+  android_mobile: "Android Mobile",
+  android_tv: "Android TV",
+};
 
 export default function AppVersionManager() {
-  const [versions, setVersions] = useState({ mobile: null, tv: null });
+  const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [uploadForm, setUploadForm] = useState({
-    platform: 'mobile',
-    version: '',
-    releaseNotes: '',
-    file: null
+  const [error, setError] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [editingVersion, setEditingVersion] = useState(null);
+  const [filterPlatform, setFilterPlatform] = useState("");
+  const [formData, setFormData] = useState({
+    platform: "android_mobile",
+    version_code: 1,
+    version_name: "1.0.0",
+    download_url: "",
+    release_notes: "",
+    min_required_version: 1,
+    file_size: "",
+    is_active: true,
   });
-  const [message, setMessage] = useState({ type: '', text: '' });
 
-  useEffect(() => {
-    fetchVersions();
-  }, []);
-
+  // Fetch all versions
   const fetchVersions = async () => {
     try {
-      const response = await fetch(`${BASE_API_URL}/app-version/all`);
+      setLoading(true);
+      const url = filterPlatform
+        ? `${BASE_API_URL}/admin/app-versions?platform=${filterPlatform}`
+        : `${BASE_API_URL}/admin/app-versions`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch versions");
       const data = await response.json();
       setVersions(data);
-    } catch (error) {
-      console.error('Failed to fetch versions:', error);
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file && file.name.endsWith('.apk')) {
-      setUploadForm({ ...uploadForm, file });
-    } else {
-      setMessage({ type: 'error', text: 'Vui lòng chọn file APK' });
-    }
+  useEffect(() => {
+    fetchVersions();
+  }, [filterPlatform]);
+
+  // Handle form input changes
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
   };
 
-  const handleUpload = async (e) => {
+  // Reset form
+  const resetForm = () => {
+    setFormData({
+      platform: "android_mobile",
+      version_code: 1,
+      version_name: "1.0.0",
+      download_url: "",
+      release_notes: "",
+      min_required_version: 1,
+      file_size: "",
+      is_active: true,
+    });
+    setEditingVersion(null);
+  };
+
+  // Open modal for creating new version
+  const openCreateModal = () => {
+    resetForm();
+    // Set version_code to next available
+    const maxVersionCode = versions
+      .filter((v) => v.platform === formData.platform)
+      .reduce((max, v) => Math.max(max, v.version_code), 0);
+    setFormData((prev) => ({
+      ...prev,
+      version_code: maxVersionCode + 1,
+    }));
+    setShowModal(true);
+  };
+
+  // Open modal for editing
+  const openEditModal = (version) => {
+    setEditingVersion(version);
+    setFormData({
+      platform: version.platform,
+      version_code: version.version_code,
+      version_name: version.version_name,
+      download_url: version.download_url,
+      release_notes: version.release_notes || "",
+      min_required_version: version.min_required_version,
+      file_size: version.file_size || "",
+      is_active: version.is_active,
+    });
+    setShowModal(true);
+  };
+
+  // Create or update version
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!uploadForm.file || !uploadForm.version) {
-      setMessage({ type: 'error', text: 'Vui lòng điền đầy đủ thông tin' });
-      return;
-    }
-
-    setUploading(true);
-    setMessage({ type: '', text: '' });
-
-    const formData = new FormData();
-    formData.append('platform', uploadForm.platform);
-    formData.append('version', uploadForm.version);
-    formData.append('release_notes', uploadForm.releaseNotes);
-    formData.append('apk_file', uploadForm.file);
-
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`${BASE_API_URL}/app-version/upload`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
+      const url = editingVersion
+        ? `${BASE_API_URL}/admin/app-versions/${editingVersion.id}`
+        : `${BASE_API_URL}/admin/app-versions`;
+      const method = editingVersion ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formData,
+          version_code: parseInt(formData.version_code),
+          min_required_version: parseInt(formData.min_required_version),
+        }),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Upload thất bại');
+        throw new Error(errorData.detail || "Failed to save version");
       }
-      
-      setMessage({ type: 'success', text: 'Upload thành công!' });
-      setUploadForm({ platform: 'mobile', version: '', releaseNotes: '', file: null });
+
+      setShowModal(false);
+      resetForm();
       fetchVersions();
-    } catch (error) {
-      setMessage({ 
-        type: 'error', 
-        text: error.message || 'Upload thất bại' 
-      });
-    } finally {
-      setUploading(false);
+    } catch (err) {
+      alert(err.message);
     }
   };
 
-  const handleDelete = async (platform) => {
-    if (!confirm(`Bạn có chắc muốn xóa bản ${platform}?`)) return;
+  // Delete version
+  const handleDelete = async (id) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa phiên bản này?")) return;
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`${BASE_API_URL}/app-version/${platform}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+      const response = await fetch(`${BASE_API_URL}/admin/app-versions/${id}`, {
+        method: "DELETE",
       });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Xóa thất bại');
-      }
-      
-      setMessage({ type: 'success', text: 'Đã xóa thành công' });
+      if (!response.ok) throw new Error("Failed to delete version");
       fetchVersions();
-    } catch (error) {
-      setMessage({ 
-        type: 'error', 
-        text: error.message || 'Xóa thất bại' 
-      });
+    } catch (err) {
+      alert(err.message);
     }
   };
 
-  const formatFileSize = (bytes) => {
-    if (!bytes) return 'N/A';
-    const mb = bytes / (1024 * 1024);
-    return `${mb.toFixed(2)} MB`;
+  // Activate version
+  const handleActivate = async (id) => {
+    try {
+      const response = await fetch(
+        `${BASE_API_URL}/admin/app-versions/${id}/activate`,
+        { method: "POST" }
+      );
+      if (!response.ok) throw new Error("Failed to activate version");
+      fetchVersions();
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
+  // Format date
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleString('vi-VN');
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleString("vi-VN");
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg bg-red-100 p-4 text-red-700">
+        Lỗi: {error}
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-8">
-      <h1 className="text-2xl font-bold text-white">Quản Lý Ứng Dụng APK</h1>
+    <div className="p-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold text-gray-800">
+          Quản Lý Phiên Bản Ứng Dụng
+        </h1>
+        <div className="flex gap-3">
+          <select
+            value={filterPlatform}
+            onChange={(e) => setFilterPlatform(e.target.value)}
+            className="rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="">Tất cả nền tảng</option>
+            <option value="android_mobile">Android Mobile</option>
+            <option value="android_tv">Android TV</option>
+          </select>
+          <button
+            onClick={openCreateModal}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700"
+          >
+            + Thêm Phiên Bản
+          </button>
+        </div>
+      </div>
 
-      {/* Message */}
-      {message.text && (
-        <div className={`p-4 rounded-lg ${
-          message.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-        }`}>
-          {message.text}
+      {/* Version Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {versions.map((version) => (
+          <div
+            key={version.id}
+            className={`rounded-lg border ${
+              version.is_active
+                ? "border-green-500 bg-green-50"
+                : "border-gray-200 bg-white"
+            } p-4 shadow-sm`}
+          >
+            <div className="mb-3 flex items-start justify-between">
+              <div>
+                <span
+                  className={`inline-block rounded px-2 py-1 text-xs font-medium ${
+                    version.platform === "android_mobile"
+                      ? "bg-blue-100 text-blue-700"
+                      : "bg-purple-100 text-purple-700"
+                  }`}
+                >
+                  {PLATFORMS[version.platform]}
+                </span>
+                {version.is_active && (
+                  <span className="ml-2 inline-block rounded bg-green-500 px-2 py-1 text-xs font-medium text-white">
+                    Đang hoạt động
+                  </span>
+                )}
+              </div>
+              <span className="text-lg font-bold text-gray-800">
+                v{version.version_name}
+              </span>
+            </div>
+
+            <div className="mb-3 space-y-1 text-sm text-gray-600">
+              <p>
+                <span className="font-medium">Version Code:</span>{" "}
+                {version.version_code}
+              </p>
+              <p>
+                <span className="font-medium">Min Required:</span>{" "}
+                {version.min_required_version}
+              </p>
+              {version.file_size && (
+                <p>
+                  <span className="font-medium">Kích thước:</span>{" "}
+                  {version.file_size}
+                </p>
+              )}
+              <p>
+                <span className="font-medium">Ngày tạo:</span>{" "}
+                {formatDate(version.created_at)}
+              </p>
+            </div>
+
+            {version.release_notes && (
+              <div className="mb-3 max-h-20 overflow-y-auto rounded bg-gray-100 p-2 text-sm text-gray-700">
+                <p className="whitespace-pre-line">{version.release_notes}</p>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={version.download_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded bg-gray-200 px-3 py-1 text-sm text-gray-700 transition hover:bg-gray-300"
+              >
+                📥 Tải xuống
+              </a>
+              <button
+                onClick={() => openEditModal(version)}
+                className="rounded bg-yellow-100 px-3 py-1 text-sm text-yellow-700 transition hover:bg-yellow-200"
+              >
+                ✏️ Sửa
+              </button>
+              {!version.is_active && (
+                <button
+                  onClick={() => handleActivate(version.id)}
+                  className="rounded bg-green-100 px-3 py-1 text-sm text-green-700 transition hover:bg-green-200"
+                >
+                  ✅ Kích hoạt
+                </button>
+              )}
+              <button
+                onClick={() => handleDelete(version.id)}
+                className="rounded bg-red-100 px-3 py-1 text-sm text-red-700 transition hover:bg-red-200"
+              >
+                🗑️ Xóa
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {versions.length === 0 && (
+        <div className="py-12 text-center text-gray-500">
+          Chưa có phiên bản nào. Nhấn "Thêm Phiên Bản" để tạo mới.
         </div>
       )}
 
-      {/* Current Versions */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Mobile Version */}
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-sky-500/20 rounded-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">
-                <rect width="14" height="20" x="5" y="2" rx="2" ry="2"/>
-                <path d="M12 18h.01"/>
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold text-white">Mobile APK</h2>
-          </div>
-          
-          {versions.mobile ? (
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Phiên bản:</span>
-                <span className="text-white font-medium">{versions.mobile.version}</span>
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold text-gray-800">
+              {editingVersion ? "Chỉnh Sửa Phiên Bản" : "Thêm Phiên Bản Mới"}
+            </h2>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Nền tảng
+                </label>
+                <select
+                  name="platform"
+                  value={formData.platform}
+                  onChange={handleInputChange}
+                  disabled={editingVersion}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                >
+                  <option value="android_mobile">Android Mobile</option>
+                  <option value="android_tv">Android TV</option>
+                </select>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Kích thước:</span>
-                <span className="text-white">{formatFileSize(versions.mobile.file_size)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Ngày upload:</span>
-                <span className="text-white">{formatDate(versions.mobile.uploaded_at)}</span>
-              </div>
-              {versions.mobile.release_notes && (
-                <div className="text-sm">
-                  <span className="text-gray-400">Ghi chú:</span>
-                  <p className="text-white mt-1">{versions.mobile.release_notes}</p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Version Code
+                  </label>
+                  <input
+                    type="number"
+                    name="version_code"
+                    value={formData.version_code}
+                    onChange={handleInputChange}
+                    disabled={editingVersion}
+                    min="1"
+                    required
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Số tăng dần (1, 2, 3...)
+                  </p>
                 </div>
-              )}
-              <div className="flex gap-2 mt-4">
-                <a 
-                  href={versions.mobile.download_url}
-                  className="flex-1 px-4 py-2 bg-sky-500 text-white rounded-lg text-center hover:bg-sky-600 transition"
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Version Name
+                  </label>
+                  <input
+                    type="text"
+                    name="version_name"
+                    value={formData.version_name}
+                    onChange={handleInputChange}
+                    placeholder="1.0.0"
+                    required
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  URL Tải xuống (APK)
+                </label>
+                <input
+                  type="url"
+                  name="download_url"
+                  value={formData.download_url}
+                  onChange={handleInputChange}
+                  placeholder="https://example.com/app.apk"
+                  required
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Min Required Version
+                  </label>
+                  <input
+                    type="number"
+                    name="min_required_version"
+                    value={formData.min_required_version}
+                    onChange={handleInputChange}
+                    min="1"
+                    required
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Bắt buộc cập nhật nếu version &lt; này
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Kích thước file
+                  </label>
+                  <input
+                    type="text"
+                    name="file_size"
+                    value={formData.file_size}
+                    onChange={handleInputChange}
+                    placeholder="25 MB"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Ghi chú phát hành
+                </label>
+                <textarea
+                  name="release_notes"
+                  value={formData.release_notes}
+                  onChange={handleInputChange}
+                  rows="4"
+                  placeholder="- Tính năng mới&#10;- Sửa lỗi..."
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+                ></textarea>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="is_active"
+                  id="is_active"
+                  checked={formData.is_active}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label
+                  htmlFor="is_active"
+                  className="text-sm font-medium text-gray-700"
                 >
-                  Tải xuống
-                </a>
-                <button 
-                  onClick={() => handleDelete('mobile')}
-                  className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition"
+                  Kích hoạt (đặt làm phiên bản mới nhất)
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    resetForm();
+                  }}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 transition hover:bg-gray-50"
                 >
-                  Xóa
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700"
+                >
+                  {editingVersion ? "Cập Nhật" : "Tạo Mới"}
                 </button>
               </div>
-            </div>
-          ) : (
-            <p className="text-gray-500">Chưa có bản APK nào</p>
-          )}
+            </form>
+          </div>
         </div>
-
-        {/* TV Version */}
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-purple-500/20 rounded-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-                <rect width="20" height="15" x="2" y="3" rx="2"/>
-                <polyline points="8 21 12 17 16 21"/>
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold text-white">Android TV APK</h2>
-          </div>
-          
-          {versions.tv ? (
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Phiên bản:</span>
-                <span className="text-white font-medium">{versions.tv.version}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Kích thước:</span>
-                <span className="text-white">{formatFileSize(versions.tv.file_size)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Ngày upload:</span>
-                <span className="text-white">{formatDate(versions.tv.uploaded_at)}</span>
-              </div>
-              {versions.tv.release_notes && (
-                <div className="text-sm">
-                  <span className="text-gray-400">Ghi chú:</span>
-                  <p className="text-white mt-1">{versions.tv.release_notes}</p>
-                </div>
-              )}
-              <div className="flex gap-2 mt-4">
-                <a 
-                  href={versions.tv.download_url}
-                  className="flex-1 px-4 py-2 bg-purple-500 text-white rounded-lg text-center hover:bg-purple-600 transition"
-                >
-                  Tải xuống
-                </a>
-                <button 
-                  onClick={() => handleDelete('tv')}
-                  className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition"
-                >
-                  Xóa
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="text-gray-500">Chưa có bản APK nào</p>
-          )}
-        </div>
-      </div>
-
-      {/* Upload Form */}
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-        <h2 className="text-xl font-semibold text-white mb-6">Upload APK Mới</h2>
-        
-        <form onSubmit={handleUpload} className="space-y-4">
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">
-                Nền tảng
-              </label>
-              <select
-                value={uploadForm.platform}
-                onChange={(e) => setUploadForm({ ...uploadForm, platform: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-              >
-                <option value="mobile">Mobile (Điện thoại)</option>
-                <option value="tv">Android TV</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">
-                Phiên bản
-              </label>
-              <input
-                type="text"
-                placeholder="VD: 1.0.0"
-                value={uploadForm.version}
-                onChange={(e) => setUploadForm({ ...uploadForm, version: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">
-              Ghi chú phát hành (tùy chọn)
-            </label>
-            <textarea
-              placeholder="Mô tả các thay đổi trong phiên bản này..."
-              value={uploadForm.releaseNotes}
-              onChange={(e) => setUploadForm({ ...uploadForm, releaseNotes: e.target.value })}
-              rows={3}
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-sky-500 focus:border-transparent resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">
-              File APK
-            </label>
-            <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-sky-500 transition cursor-pointer">
-              <input
-                type="file"
-                accept=".apk"
-                onChange={handleFileChange}
-                className="hidden"
-                id="apk-upload"
-              />
-              <label htmlFor="apk-upload" className="cursor-pointer">
-                {uploadForm.file ? (
-                  <div className="text-sky-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="font-medium">{uploadForm.file.name}</p>
-                    <p className="text-sm text-gray-400">{formatFileSize(uploadForm.file.size)}</p>
-                  </div>
-                ) : (
-                  <div className="text-gray-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                    <p>Nhấn để chọn file APK</p>
-                    <p className="text-sm">hoặc kéo thả file vào đây</p>
-                  </div>
-                )}
-              </label>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={uploading}
-            className="w-full py-3 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold rounded-lg hover:from-sky-600 hover:to-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {uploading ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                Đang upload...
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-                Upload APK
-              </>
-            )}
-          </button>
-        </form>
-      </div>
+      )}
     </div>
   );
 }
