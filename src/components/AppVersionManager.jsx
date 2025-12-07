@@ -140,14 +140,21 @@ export default function AppVersionManager() {
       setUploading(true);
       setUploadProgress(0);
       
+      // Build query string for parameters
+      const params = new URLSearchParams({
+        platform: formData.platform,
+        version_code: String(formData.version_code),
+        version_name: formData.version_name,
+        min_required_version: String(formData.min_required_version),
+        is_active: String(formData.is_active),
+      });
+      if (formData.release_notes) {
+        params.append('release_notes', formData.release_notes);
+      }
+      
+      // File goes in FormData
       const formDataToSend = new FormData();
       formDataToSend.append('file', selectedFile);
-      formDataToSend.append('platform', formData.platform);
-      formDataToSend.append('version_code', formData.version_code);
-      formDataToSend.append('version_name', formData.version_name);
-      formDataToSend.append('release_notes', formData.release_notes || '');
-      formDataToSend.append('min_required_version', formData.min_required_version);
-      formDataToSend.append('is_active', formData.is_active);
       
       const xhr = new XMLHttpRequest();
       
@@ -176,7 +183,7 @@ export default function AppVersionManager() {
         setUploading(false);
       });
       
-      xhr.open('POST', `${BASE_API_URL}/admin/app-versions/upload-apk`);
+      xhr.open('POST', `${BASE_API_URL}/admin/app-versions/upload-apk?${params.toString()}`);
       xhr.send(formDataToSend);
       
     } catch (err) {
