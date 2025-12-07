@@ -56,7 +56,7 @@ export default function AppVersionManager() {
     formData.append('apk_file', uploadForm.file);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const response = await fetch(`${BASE_API_URL}/app-version/upload`, {
         method: 'POST',
         headers: {
@@ -87,7 +87,7 @@ export default function AppVersionManager() {
     if (!confirm(`Bạn có chắc muốn xóa bản ${platform}?`)) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const response = await fetch(`${BASE_API_URL}/app-version/${platform}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
