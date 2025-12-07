@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../config/api.js';
+import { BASE_API_URL } from '../config/api.js';
 
 export default function AppVersionManager() {
   const [versions, setVersions] = useState({ mobile: null, tv: null });
@@ -19,8 +19,9 @@ export default function AppVersionManager() {
 
   const fetchVersions = async () => {
     try {
-      const response = await api.get('/app-version/all');
-      setVersions(response.data);
+      const response = await fetch(`${BASE_API_URL}/app-version/all`);
+      const data = await response.json();
+      setVersions(data);
     } catch (error) {
       console.error('Failed to fetch versions:', error);
     } finally {
@@ -56,12 +57,18 @@ export default function AppVersionManager() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await api.post('/app-version/upload', formData, {
+      const response = await fetch(`${BASE_API_URL}/app-version/upload`, {
+        method: 'POST',
         headers: {
-          'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`
-        }
+        },
+        body: formData
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Upload thất bại');
+      }
       
       setMessage({ type: 'success', text: 'Upload thành công!' });
       setUploadForm({ platform: 'mobile', version: '', releaseNotes: '', file: null });
@@ -69,7 +76,7 @@ export default function AppVersionManager() {
     } catch (error) {
       setMessage({ 
         type: 'error', 
-        text: error.response?.data?.detail || 'Upload thất bại' 
+        text: error.message || 'Upload thất bại' 
       });
     } finally {
       setUploading(false);
@@ -81,15 +88,22 @@ export default function AppVersionManager() {
 
     try {
       const token = localStorage.getItem('token');
-      await api.delete(`/app-version/${platform}`, {
+      const response = await fetch(`${BASE_API_URL}/app-version/${platform}`, {
+        method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Xóa thất bại');
+      }
+      
       setMessage({ type: 'success', text: 'Đã xóa thành công' });
       fetchVersions();
     } catch (error) {
       setMessage({ 
         type: 'error', 
-        text: error.response?.data?.detail || 'Xóa thất bại' 
+        text: error.message || 'Xóa thất bại' 
       });
     }
   };
