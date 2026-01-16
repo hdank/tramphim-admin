@@ -21,6 +21,8 @@ const CrawlModal = ({ onClose, onCrawlSuccess }) => {
   });
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState(null);
+  const [manualSlug, setManualSlug] = useState("");
+  const [manualTmdbId, setManualTmdbId] = useState("");
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -196,6 +198,78 @@ const CrawlModal = ({ onClose, onCrawlSuccess }) => {
               })}
             </div>
           </form>
+
+          {/* Manual import single movie */}
+          <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
+            <h3 className="text-gray-700 font-medium mb-2">Import phim thủ công</h3>
+            <p className="text-xs text-gray-500 mb-3">Nhập `slug` (ưu tiên) hoặc TMDb ID để import một phim cụ thể.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="text"
+                placeholder="Slug (ví dụ: ten-phim-abc)"
+                value={manualSlug}
+                onChange={(e) => setManualSlug(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white"
+              />
+              <input
+                type="text"
+                placeholder="TMDb ID (ví dụ: 12345)"
+                value={manualTmdbId}
+                onChange={(e) => setManualTmdbId(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white"
+              />
+            </div>
+            <div className="mt-3 text-right">
+              <button
+                type="button"
+                onClick={async () => {
+                  setLoading('manual');
+                  setError(null);
+                  try {
+                    const accessToken = localStorage.getItem('access_token');
+                    if (!accessToken) {
+                      throw new Error('Bạn chưa đăng nhập hoặc phiên đã hết hạn. Vui lòng đăng nhập lại.');
+                    }
+
+                    const payload = {};
+                    if (manualSlug) payload.slug = manualSlug;
+                    if (manualTmdbId) payload.tmdb_id = parseInt(manualTmdbId, 10) || undefined;
+
+                    await axios.post(`${BASE_API_URL}/import/manual-movie/`, payload, {
+                      headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                      }
+                    });
+
+                    toast.success('Đã xếp hàng import phim.');
+                    onCrawlSuccess();
+                    onClose();
+                  } catch (err) {
+                    console.error('Lỗi import phim thủ công:', err);
+                    let message = 'Lỗi khi gửi yêu cầu import.';
+                    if (err.response) {
+                      if (err.response.status === 401) {
+                        message = 'Không được phép — vui lòng đăng nhập với tài khoản admin.';
+                      } else {
+                        message = err.response.data.detail || message;
+                      }
+                    } else if (err.message) {
+                      message = err.message;
+                    }
+                    toast.error(message);
+                    setError(message);
+                  } finally {
+                    setLoading(null);
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-gray-800 to-black text-white font-medium disabled:opacity-50"
+                disabled={loading !== null}
+              >
+                {loading === 'manual' ? <Loader2 size={16} className="animate-spin" /> : 'Import Movie'}
+              </button>
+            </div>
+          </div>
 
           {/* Footer info */}
           <div className="mt-6 pt-4 border-t border-gray-100">
